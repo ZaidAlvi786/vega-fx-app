@@ -10,6 +10,12 @@ import airsign.signage.player.data.utils.BasePref
 import airsign.signage.player.data.utils.DeviceInfoUtils
 import airsign.signage.player.data.utils.NetworkUtils
 import airsign.signage.player.domain.repository.DeviceRepository
+import airsign.signage.player.BuildConfig
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.postgrest.Postgrest
+import io.github.jan.supabase.realtime.Realtime
+import io.ktor.client.engine.cio.CIO
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -19,6 +25,19 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 class AppModule {
+
+    @Provides
+    @Singleton
+    fun provideSupabaseClient(): SupabaseClient {
+        return createSupabaseClient(
+            supabaseUrl = BuildConfig.SUPABASE_URL,
+            supabaseKey = BuildConfig.SUPABASE_ANON_KEY
+        ) {
+            install(Postgrest)
+            install(Realtime)
+            httpEngine = CIO.create()
+        }
+    }
 
     @Provides
     @Singleton
@@ -59,4 +78,25 @@ class AppModule {
         return DeviceRepositoryImpl(apiService, basePref, apiResponseDao, pairingCodeDao)
     }
 
+    @Provides
+    @Singleton
+    fun providePlaylistRepository(
+        apiService: DeviceApiService,
+        apiResponseDao: ApiResponseDao
+    ): airsign.signage.player.domain.repository.PlaylistRepository {
+        return airsign.signage.player.data.repository.PlaylistRepositoryImpl(apiService, apiResponseDao)
+    }
+
+    @androidx.media3.common.util.UnstableApi
+    @Provides
+    @Singleton
+    fun provideMediaCacheManager(app: Application): airsign.signage.player.player.cache.MediaCacheManager {
+        return airsign.signage.player.player.cache.MediaCacheManager(app)
+    }
+
+    @Provides
+    @Singleton
+    fun provideFileManager(app: Application): airsign.signage.player.data.downloader.FileManager {
+        return airsign.signage.player.data.downloader.FileManager(app)
+    }
 }
