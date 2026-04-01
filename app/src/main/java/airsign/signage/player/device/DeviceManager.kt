@@ -51,20 +51,29 @@ class DeviceManager @Inject constructor(
 
         generateJob?.cancel()
         generateJob = scope.launch(Dispatchers.IO) {
-            val session = pairingCoordinator.generatePairingCode(
-                onCodeGenerated = { code ->
-                    _deviceState.value = DeviceState.Pending(code)
-                },
-                onUnauthorized = {
-                    clearDevice()
-                },
-                onError = {
-                    Log.e(TAG, "Pairing generation error")
-                }
-            )
+            var currentDelay = BASE_BACKOFF_MS
+            while (isActive && _deviceState.value is DeviceState.Unregistered) {
+                val session = pairingCoordinator.generatePairingCode(
+                    onCodeGenerated = { code ->
+                        _deviceState.value = DeviceState.Pending(code)
+                    },
+                    onUnauthorized = {
+                        clearDevice()
+                    },
+                    onError = {
+                        Log.e(TAG, "Pairing generation error, retrying in ${currentDelay}ms")
+                    }
+                )
 
-            if (session != null) {
-                startPolling(scope, session)
+                if (session != null) {
+                    startPolling(scope, session)
+                    return@launch
+                }
+
+                if (_deviceState.value is DeviceState.Unregistered) {
+                    delay(currentDelay)
+                    currentDelay = (currentDelay * 2).coerceAtMost(MAX_BACKOFF_MS)
+                }
             }
         }
     }
