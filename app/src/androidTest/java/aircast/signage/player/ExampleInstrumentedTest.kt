@@ -19,6 +19,6 @@ class ExampleInstrumentedTest {
     fun useAppContext() {
         // Context of the app under test.
         val appContext = InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals(appContext.getString(R.string.app_name), appContext.packageName)
+        assertEquals("airsign.signage.player", appContext.packageName)
     }
 }
