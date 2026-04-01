@@ -214,8 +214,8 @@ class DeviceRepositoryImpl @Inject constructor(
     }
 
     companion object {
-        private const val ENDPOINT_GENERATE_CODE = "device/register"
-        const val ENDPOINT_CHECK_PAIRING = "device/status"
+        private const val ENDPOINT_GENERATE_CODE = "api/devices/generate-code"
+        const val ENDPOINT_CHECK_PAIRING = "api/devices/check-pairing"
         private const val ENDPOINT_HEARTBEAT = "api/devices/heartbeat"
         const val ENDPOINT_CURRENT_PLAYLIST = "api/devices/current-playlist"
         private const val ENDPOINT_SCREEN_DETAILS = "api/devices/screen-details"
