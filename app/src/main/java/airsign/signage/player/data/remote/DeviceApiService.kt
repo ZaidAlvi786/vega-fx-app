@@ -13,7 +13,7 @@ import retrofit2.http.Query
  */
 interface DeviceApiService {
 
-    @POST("device/register")
+    @POST("api/devices/generate-code")
     suspend fun generatePairingCode(): Response<GenerateCodeResponse>
 
     @POST("api/devices/screen-details")
@@ -21,7 +21,7 @@ interface DeviceApiService {
         @Body body: String
     ): Response<Unit>
 
-    @GET("device/status")
+    @GET("api/devices/check-pairing")
     suspend fun checkPairingStatus(
         @Query("code") code: String
     ): Response<CheckPairingResponse>
@@ -83,6 +83,7 @@ data class MediaItem(
     @SerializedName("mime_type") val mimeType: String?,
     @SerializedName("file_size") val fileSize: Long?,
     val last_modified : String,
+    val checksum: String?,
     val width: Int?,
     val height: Int?,
     @SerializedName("duration_sec") val durationSec: Int?,
