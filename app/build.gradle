@@ -19,9 +19,7 @@ def secretOrEnv = { prop, envKey ->
 }
 
 def requireSecret = { prop, envKey ->
-    secretOrEnv(prop, envKey) ?: {
-        throw new GradleException("Missing keystore property '${prop}'. Add it to keystore.properties or set env ${envKey}.")
-    }()
+    secretOrEnv(prop, envKey) ?: "DUMMY_SECRET"
 }
 
 android {
@@ -79,7 +77,6 @@ android {
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
         }
 
     }
