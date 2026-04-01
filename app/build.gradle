@@ -1,0 +1,176 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'kotlin-kapt'
+    id("com.google.dagger.hilt.android")
+    id 'com.google.gms.google-services'
+    id 'com.google.firebase.crashlytics'
+}
+
+// Load keystore secrets from keystore.properties (git-ignored) or env vars
+def keystoreProps = new Properties()
+def keystorePropsFile = rootProject.file("keystore.properties")
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
+def secretOrEnv = { prop, envKey ->
+    keystoreProps[prop] ?: System.getenv(envKey) ?: project.findProperty(prop)
+}
+
+def requireSecret = { prop, envKey ->
+    secretOrEnv(prop, envKey) ?: {
+        throw new GradleException("Missing keystore property '${prop}'. Add it to keystore.properties or set env ${envKey}.")
+    }()
+}
+
+android {
+    compileSdk 35
+
+    namespace 'airsign.signage.player'
+    defaultConfig {
+        applicationId "airsign.signage.player"
+        minSdk 21
+        targetSdk 35
+        versionName "1.0.2"
+        versionCode 3
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        vectorDrawables.useSupportLibrary = true
+        // Keep only needed locales to reduce resources; add more if required.
+        resConfigs "en"
+    }
+
+    signingConfigs {
+
+        release {
+            storeFile file(secretOrEnv("storeFile", "KEYSTORE_FILE") ?: "installation/airsign.jks")
+            storePassword requireSecret("storePassword", "KEYSTORE_STORE_PASSWORD")
+            keyAlias secretOrEnv("keyAlias", "KEYSTORE_KEY_ALIAS") ?: "airsign.ai"
+            keyPassword requireSecret("keyPassword", "KEYSTORE_KEY_PASSWORD")
+            v1SigningEnabled true
+            v2SigningEnabled true
+
+        }
+    }
+
+
+    buildTypes {
+        airsign {
+            buildConfigField "String", "BASE_URL", "\"https://www.airsign.ai/\""
+            buildConfigField "String", "DISPLAY_URL", "\"https://www.airsign.ai\""
+            buildConfigField "String", "CACHE_FOLDER", "\"/airsign\""
+            buildConfigField "String", "SUPABASE_URL", "\"https://vbpmfumdwdkkjjudnyqm.supabase.co\""
+            buildConfigField "String", "SUPABASE_ANON_KEY", "\"sb_publishable_fyil1Rk6nwlLensHf3bAkw_Go2ctOm_\""
+            debuggable false
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+
+        debug {
+            buildConfigField "String", "BASE_URL", "\"https://www.airsign.ai/\""
+            buildConfigField "String", "DISPLAY_URL", "\"https://www.airsign.ai\""
+            buildConfigField "String", "CACHE_FOLDER", "\"/airsign\""
+            buildConfigField "String", "SUPABASE_URL", "\"https://vbpmfumdwdkkjjudnyqm.supabase.co\""
+            buildConfigField "String", "SUPABASE_ANON_KEY", "\"sb_publishable_fyil1Rk6nwlLensHf3bAkw_Go2ctOm_\""
+            debuggable true
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+
+    }
+
+    buildFeatures{
+        buildConfig true
+    }
+
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach { output ->
+            def SEP = "_"
+            def project = "airsign.ai"
+
+            def version = variant.versionName
+            def newApkName = project + SEP + version + ".apk"
+
+            outputFileName = new File(newApkName)
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    packagingOptions {
+        resources {
+            excludes += ['META-INF/AL2.0', 'META-INF/LGPL2.1']
+        }
+    }
+}
+
+dependencies {
+
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+
+    implementation 'androidx.core:core-ktx:1.7.0'
+    implementation 'androidx.appcompat:appcompat:1.5.1'
+    implementation 'com.google.android.material:material:1.7.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+
+    // Media3 (replacement for ExoPlayer)
+    implementation "androidx.media3:media3-exoplayer:1.3.1"
+    implementation "androidx.media3:media3-ui:1.3.1"
+
+    //Gson
+    implementation 'com.google.code.gson:gson:2.10.1'
+    // PRDownloader (JitPack-hosted)
+    implementation 'com.github.amitshekhariitbhu:PRDownloader:1.0.2'
+    //glide
+    implementation 'com.github.bumptech.glide:glide:4.13.2'
+
+    implementation 'androidx.work:work-runtime:2.9.1'
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
+
+
+    implementation 'com.google.firebase:firebase-crashlytics-ktx:18.6.2'
+    implementation 'com.google.firebase:firebase-analytics-ktx:21.5.1'
+
+    implementation 'io.github.afreakyelf:Pdf-Viewer:2.1.1'
+
+    implementation("com.google.dagger:hilt-android:2.51.1")
+    kapt("com.google.dagger:hilt-android-compiler:2.51.1")
+
+    implementation 'joda-time:joda-time:2.12.0'
+
+    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+    implementation 'com.squareup.retrofit2:converter-scalars:2.6.1'
+    implementation 'com.squareup.retrofit2:adapter-rxjava2:2.5.0'
+    implementation 'androidx.room:room-runtime:2.6.1'
+    implementation 'androidx.room:room-ktx:2.6.1'
+    kapt 'androidx.room:room-compiler:2.6.1'
+
+    // Supabase
+    implementation(platform("io.github.jan-tennert.supabase:bom:2.5.0"))
+    implementation("io.github.jan-tennert.supabase:postgrest-kt")
+    implementation("io.github.jan-tennert.supabase:realtime-kt")
+    implementation("io.ktor:ktor-client-android:2.3.5")
+    implementation("io.ktor:ktor-client-cio:2.3.5")
+
+    // Leak detection (debug only)
+    debugImplementation 'com.squareup.leakcanary:leakcanary-android:2.14'
+
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    
+    // EncryptedSharedPrefs
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+}

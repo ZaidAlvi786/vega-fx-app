@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1016059033180",
+    "project_id": "aircast-ai",
+    "storage_bucket": "aircast-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1016059033180:android:cc77291dd2eb2f5807d899",
+        "android_client_info": {
+          "package_name": "airsign.signage.player"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBk2BXVX2M019DfCvcNSD7ZDk9oOKcQMFU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

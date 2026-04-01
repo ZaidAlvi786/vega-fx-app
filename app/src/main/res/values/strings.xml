@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">AirSign.ai</string>
+    <string name="add_playlist_label">Please go to https://www.airsign.ai/ and assign content to the screen</string>
+    <string name="app_version">App version </string>
+    <string name="version_code">Version Code </string>
+    <string name="domain">AirSign.ai</string>
+    <string name="connecting_to_server_update">Connecting to server update …</string>
+    <string name="pairing_device_not_found">Device not registered. Please add this device in the AirSign dashboard.</string>
+    <string name="empty_playlist_found">Empty Playlist found</string>
+    <string name="stop_playback_message">The playlist is currently paused. Please enable it from the CMS to resume playback.</string>
+</resources>
