@@ -3,15 +3,11 @@ package airsign.signage.player.data.realtime
 import airsign.signage.player.BuildConfig
 import android.util.Log
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.createSupabaseClient
-import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.PostgresAction
-import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.realtime.RealtimeChannel
 import io.github.jan.supabase.realtime.channel
 import io.github.jan.supabase.realtime.postgresChangeFlow
 import io.github.jan.supabase.realtime.realtime
-import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,21 +23,14 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class SupabaseRealtimeService @Inject constructor() {
+class SupabaseRealtimeService @Inject constructor(
+    private val supabaseClient: SupabaseClient
+) {
 
     companion object {
         private const val TAG = "SupabaseRealtimeService"
         private const val DEVICES_TABLE = "device_sync_state"
         private const val SCHEMA_PUBLIC = "public"
-    }
-
-    private val supabaseClient: SupabaseClient = createSupabaseClient(
-        supabaseUrl = BuildConfig.SUPABASE_URL,
-        supabaseKey = BuildConfig.SUPABASE_ANON_KEY
-    ) {
-        install(Postgrest)
-        install(Realtime)
-        httpEngine = CIO.create()
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -62,21 +51,27 @@ class SupabaseRealtimeService @Inject constructor() {
                 Log.i(TAG, "Subscribing to realtime updates for deviceId=$deviceId")
                 val channel = supabaseClient.realtime.channel("device:$deviceId")
 
+                // Listen to any changes (Insert/Update) to ensure we don't miss Upserts
                 subscriptionJob =
-                    channel.postgresChangeFlow<PostgresAction.Update>(schema = SCHEMA_PUBLIC) {
+                    channel.postgresChangeFlow<PostgresAction>(schema = SCHEMA_PUBLIC) {
                         table = DEVICES_TABLE
                         filter = "device_id=eq.$deviceId"
                     }.onEach { action ->
-                        Log.d(TAG, "updated received ...!")
+                        Log.d(TAG, "Realtime activity detected: ${action.javaClass.simpleName} for $deviceId")
                         _deviceUpdates.emit(deviceId)
                     }.catch { error ->
-                        Log.e(TAG, "faild to subscribe $deviceId", error)
+                        Log.e(TAG, "Realtime flow error for $deviceId", error)
                     }.launchIn(serviceScope)
 
                 channel.subscribe()
                 activeChannel = channel
 
-                Log.i(TAG, "Realtime subscription active for deviceId=$deviceId")
+                // Monitor channel status for debugging
+                channel.status.onEach { status ->
+                    Log.d(TAG, "Channel status for $deviceId: $status")
+                }.launchIn(serviceScope)
+
+                Log.i(TAG, "Realtime subscription initiated for deviceId=$deviceId")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to subscribe to realtime updates for deviceId=$deviceId", e)
             }
