@@ -24,19 +24,23 @@ class MediaPlayer(private val mPref: BasePref) : Serializable {
 
     private fun parse(playlist: List<Content>): MediaPlayer {
         try {
-            mediaList.clear()
+            synchronized(mediaList) {
+                mediaList.clear()
 
-            for (content in playlist)
-                if (content.type == IMAGE || content.type == VIDEO) {
+                for (content in playlist)
+                    if (content.type == IMAGE || content.type == VIDEO) {
 
-                    content.url = content.url.replace("http://", "https://")
+                        var url = content.url.replace("http://", "https://")
 
-                    if (content.url.startsWith("/uploads/"))
-                        content.url = "${BuildConfig.DISPLAY_URL}${content.url}"
-                }
+                        if (url.startsWith("/uploads/"))
+                            url = "${BuildConfig.DISPLAY_URL}$url"
+                        
+                        content.url = url
+                    }
 
-            mediaList.addAll(playlist)
-        } catch (e: JSONException) {
+                mediaList.addAll(playlist)
+            }
+        } catch (e: Exception) {
             e.printStackTrace()
         }
         return this
@@ -101,8 +105,11 @@ class MediaPlayer(private val mPref: BasePref) : Serializable {
 
     val nextMedia: Content
         get() {
-            val size = mediaList.size
-            return mediaList[++ptr % size]
+            synchronized(mediaList) {
+                val size = mediaList.size
+                if (size == 0) return Content(type = "", url = "") // Return empty content if list is empty
+                return mediaList[++ptr % size]
+            }
         }
 
 
