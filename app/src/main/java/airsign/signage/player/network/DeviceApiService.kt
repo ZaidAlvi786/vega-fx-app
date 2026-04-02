@@ -51,13 +51,15 @@ data class CheckPairingResponse(
 data class HeartbeatRequest(
     @SerializedName("deviceId") val deviceId: String,
     @SerializedName("appVersion") val appVersion: String,
-    @SerializedName("osVersion") val osVersion: String
+    @SerializedName("osVersion") val osVersion: String,
+    @SerializedName("last_sync_time") val lastSyncTime: Long? = null
 )
 
 data class HeartbeatResponse(
     val success: Boolean,
     val status: String,
-    val hasNewPlaylist: Boolean
+    @SerializedName("has_new_playlist") val hasNewPlaylist: Boolean,
+    @SerializedName("last_sync_time") val lastSyncTime: Long? = null
 )
 
 data class PlaylistResponse(
@@ -82,7 +84,7 @@ data class MediaItem(
     @SerializedName("thumbnail_url") val thumbnailUrl: String?,
     @SerializedName("mime_type") val mimeType: String?,
     @SerializedName("file_size") val fileSize: Long?,
-    val last_modified : String,
+    @SerializedName("last_modified") val last_modified : String,
     val checksum: String?,
     val width: Int?,
     val height: Int?,

@@ -14,7 +14,8 @@ interface DeviceRepository {
     suspend fun sendHeartbeat(
         deviceId: String,
         appVersion: String,
-        osVersion: String
+        osVersion: String,
+        lastSyncTime: Long? = null
     ): ApiResult<HeartbeatResponse>
 
     suspend fun postScreenDetails(deviceId: String, screenDetailsJson: String): ApiResult<Unit>

@@ -1,13 +1,8 @@
 package airsign.signage.player.data.realtime
 
-import airsign.signage.player.BuildConfig
 import android.util.Log
 import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.createSupabaseClient
-import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.from
-import io.github.jan.supabase.realtime.Realtime
-import io.ktor.client.engine.cio.CIO
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -15,20 +10,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class SupabaseDeviceRepository @Inject constructor() {
+class SupabaseDeviceRepository @Inject constructor(
+    private val supabaseClient: SupabaseClient
+) {
 
     companion object {
         private const val TAG = "SupabaseDeviceRepo"
         private const val DEVICES_TABLE = "device_sync_state"
-    }
-
-    private val supabaseClient: SupabaseClient = createSupabaseClient(
-        supabaseUrl = BuildConfig.SUPABASE_URL,
-        supabaseKey = BuildConfig.SUPABASE_ANON_KEY
-    ) {
-        install(Postgrest)
-        install(Realtime)
-        httpEngine = CIO.create()
     }
 
     suspend fun deviceExists(deviceId: String): Boolean {

@@ -53,6 +53,18 @@ class BasePref(private val context: Application) {
         return mPref!!.getInt(key, defaultValue)
     }
 
+    fun setLong(key: String, value: Long) {
+        mPref!!.edit().putLong(key, value).apply()
+    }
+
+    fun getLong(key: String): Long {
+        return mPref!!.getLong(key, -1L)
+    }
+
+    fun getLong(key: String, defaultValue: Long): Long {
+        return mPref!!.getLong(key, defaultValue)
+    }
+
     fun remove(key: String?) {
         mPref!!.edit().remove(key).apply()
     }
@@ -61,6 +73,7 @@ class BasePref(private val context: Application) {
         private var mPref: SharedPreferences? = null
         const val DEVICE_ID = "device_id"
         const val AUTH_TOKEN = "auth_token"
+        const val LAST_PLAYLIST_UPDATED_AT = "last_playlist_updated_at"
     }
 
 }

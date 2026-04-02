@@ -129,12 +129,15 @@ class FileManager(private val context: Context) {
     suspend fun getNonCachedMedia(mediaList: List<Content>): List<Pair<String, String>> {
         val pendingDownloads = mutableListOf<Pair<String, String>>()
 
-        if (mediaList.isEmpty()) {
+        // Create a defensive snapshot to avoid ConcurrentModificationException if the list is updated during iteration
+        val mediaListSnapshot = synchronized(mediaList) { ArrayList(mediaList) }
+
+        if (mediaListSnapshot.isEmpty()) {
             Log.d(TAG, "getNonCachedMedia: media list is empty")
             return emptyList()
         }
 
-        for (media in mediaList) {
+        for (media in mediaListSnapshot) {
             if (!media.isDownloadable()) continue
 
             val fileName = media.filename ?: continue

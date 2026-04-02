@@ -25,20 +25,25 @@ abstract class BaseFragment : Fragment(), Runnable {
     @Inject
     lateinit var mPref: BasePref
 
+    @Inject
+    lateinit var mFileManager: FileManager
+
     var media: Content? = null
     var playlistController: IPlaylistController? = null
 
-    lateinit var mFileManager: FileManager
+    /**
+     * If true, the fragment will automatically advance to the next media after [Content.duration].
+     * Fragments that manage their own completion (like ExoPlayerFragment) should set this to false.
+     */
+    protected var useTimer = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        mFileManager = FileManager(requireContext())
 
         if (arguments != null) {
             media = requireArguments()[EXTRA_MEDIA] as Content?
             Log.d(TAG, "Media Received :$media")
         }
-
     }
 
     @CallSuper
@@ -50,14 +55,16 @@ abstract class BaseFragment : Fragment(), Runnable {
     @CallSuper
     override fun onResume() {
         super.onResume()
+        if (!useTimer) return
+
         media?.let {
-            if (mMediaPlayer.mediaList.size == 1) {
-                Log.d(TAG, "ExoPlayerFragment Playing || there is only on media in the playlist---")
+            if (mMediaPlayer.mediaList.size <= 1) {
+                Log.d(TAG, "Single media playlist - navigation timer disabled")
             } else {
                 it.duration?.let { duration ->
                     val milliseconds = duration * 1000
                     mHandler.postDelayed(this, milliseconds.toLong())
-                    Log.d(TAG, "MediaReceived $milliseconds")
+                    Log.d(TAG, "Navigation timer scheduled for $milliseconds ms")
                 }
             }
         }
@@ -71,9 +78,10 @@ abstract class BaseFragment : Fragment(), Runnable {
     }
 
     fun resetTime() {
+        if (!useTimer) return
         // Handle both String and Int duration formats from different CMS versions
         media?.let {
-            val milliseconds = it.duration!! * 1000
+            val milliseconds = (it.duration ?: 30) * 1000
             mHandler.removeCallbacks(this)
             mHandler.postDelayed(this, milliseconds.toLong())
         }

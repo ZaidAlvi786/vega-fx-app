@@ -19,6 +19,9 @@ class App : Application() {
         PRDownloader.initialize(this)
         WorkContractor.init(this)
 
+        // Set global exception handler to capture the 'Secret Crash'
+        Thread.setDefaultUncaughtExceptionHandler(RelaunchExceptionHandler(this))
+        Log.i(TAG, "Global Exception Handler initialized - ready to capture crashes.")
     }
 
     private class RelaunchExceptionHandler(val context: Context) : Thread.UncaughtExceptionHandler {

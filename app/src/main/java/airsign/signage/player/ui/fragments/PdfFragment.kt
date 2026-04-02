@@ -8,18 +8,17 @@ import android.view.ViewGroup
 import androidx.lifecycle.lifecycleScope
 import com.rajat.pdfviewer.HeaderData
 import com.rajat.pdfviewer.PdfRendererView
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import airsign.signage.player.R
 import airsign.signage.player.ui.base.BaseFragment
+import dagger.hilt.android.AndroidEntryPoint
 import java.io.File
 
+@AndroidEntryPoint
 class PdfFragment : BaseFragment() {
     private val TAG = "PdfFragment"
-    private val asyncScope = CoroutineScope(Job() + Dispatchers.IO)
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -28,7 +27,7 @@ class PdfFragment : BaseFragment() {
         val pdfView = view.findViewById<PdfRendererView>(R.id.pdfView)
 
         try {
-            asyncScope.launch {
+            viewLifecycleOwner.lifecycleScope.launch {
                 media?.let {
                     it.filename?.let { fileName->
                         val isCached = mFileManager.isCached(fileName)

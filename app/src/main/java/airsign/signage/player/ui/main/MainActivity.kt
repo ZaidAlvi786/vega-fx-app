@@ -15,6 +15,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.util.Log
+import android.os.Handler
+import android.os.Looper
+import airsign.signage.player.service.WatchdogService
 import android.view.View
 import android.view.Window
 import android.widget.TextView
@@ -44,8 +47,17 @@ class MainActivity : AppCompatActivity(), IPlaylistController {
     private lateinit var mainViewModel: MainViewModel
 
     private lateinit var mMainUI: ConstraintLayout
-
     private var wakeLock: PowerManager.WakeLock? = null
+    
+    private val pulseHandler = Handler(Looper.getMainLooper())
+    private val pulseRunnable = object : Runnable {
+        override fun run() {
+            WatchdogService.sendPulse(this@MainActivity)
+            pulseHandler.postDelayed(this, 20000L) // Pulse every 20s
+        }
+    }
+
+
 
     private val asyncScope = CoroutineScope(Job() + Dispatchers.IO)
     private lateinit var downloadView: TextView
@@ -127,13 +139,22 @@ class MainActivity : AppCompatActivity(), IPlaylistController {
 
         mainViewModel.onAppResumed()
         mainViewModel.startSignage()
+        
+        startPulse()
+    }
+
+    override fun onBackPressed() {
+        // Do nothing to prevent exiting the signage app accidentally
+        Log.d(TAG, "onBackPressed: Back button ignored to maintain signage loop")
     }
 
     override fun onPause() {
         super.onPause()
 
         removeFragments()
-        wakeLock?.release()
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        
+        stopPulse()
     }
 
     override fun onDestroy() {
@@ -147,6 +168,7 @@ class MainActivity : AppCompatActivity(), IPlaylistController {
         }
 
         asyncScope.cancel()
+        releaseWakeLock()
     }
 
     private fun removeFragments(){
@@ -182,12 +204,26 @@ class MainActivity : AppCompatActivity(), IPlaylistController {
     }
 
     private fun acquireWakeLock() {
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP, "MyApp:WakeLock"
-        )
+        // Keep screen on
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        
+        // Keep CPU awake (Partial WakeLock)
+        if (wakeLock == null) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Aircast::SyncWakeLock")
+        }
+        
+        if (wakeLock?.isHeld == false) {
+            Log.d(TAG, "Acquiring Partial WakeLock to prevent system freeze")
+            wakeLock?.acquire(10 * 60 * 1000L /*10 minutes*/)
+        }
+    }
 
-        wakeLock?.acquire(23 * 60 * 60 * 1000)
+    private fun releaseWakeLock() {
+        if (wakeLock?.isHeld == true) {
+            Log.d(TAG, "Releasing Partial WakeLock")
+            wakeLock?.release()
+        }
     }
 
     private fun hideSystemUI(view: View) {
@@ -197,6 +233,17 @@ class MainActivity : AppCompatActivity(), IPlaylistController {
             controller.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+    }
+
+    private fun startPulse() {
+        Log.d(TAG, "Starting resilience heartbeats")
+        pulseHandler.removeCallbacks(pulseRunnable)
+        pulseHandler.post(pulseRunnable)
+    }
+
+    private fun stopPulse() {
+        Log.d(TAG, "Stopping resilience heartbeats")
+        pulseHandler.removeCallbacks(pulseRunnable)
     }
 
 }

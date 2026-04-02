@@ -39,10 +39,11 @@ class DeviceRuntimeController @Inject constructor(
     fun start(
         scope: CoroutineScope,
         deviceId: String,
-        onPlaylistUpdate: suspend () -> Unit,
+        onPlaylistUpdate: suspend (Long?) -> Unit,
+        onGetLastSyncTime: () -> Long?,
         onUnauthorized: () -> Unit
     ) {
-        startHeartbeat(scope, deviceId, onUnauthorized)
+        startHeartbeat(scope, deviceId, onPlaylistUpdate, onGetLastSyncTime, onUnauthorized)
         startRealtime(scope, deviceId, onPlaylistUpdate)
     }
 
@@ -55,6 +56,8 @@ class DeviceRuntimeController @Inject constructor(
     private fun startHeartbeat(
         scope: CoroutineScope,
         deviceId: String,
+        onPlaylistUpdate: suspend (Long?) -> Unit,
+        onGetLastSyncTime: () -> Long?,
         onUnauthorized: () -> Unit
     ) {
         heartbeatJob?.cancel()
@@ -62,10 +65,11 @@ class DeviceRuntimeController @Inject constructor(
             var retryDelayMs = HEARTBEAT_RETRY_BASE_MS
             while (isActive) {
                 Log.d(TAG, "sending heartbeat !!!.")
-                when (deviceRepository.sendHeartbeat(
+                when (val result = deviceRepository.sendHeartbeat(
                     deviceId,
                     BuildConfig.VERSION_NAME,
-                    Build.VERSION.SDK_INT.toString()
+                    Build.VERSION.SDK_INT.toString(),
+                    onGetLastSyncTime()
                 )) {
                     is ApiResult.Unauthorized -> {
                         onUnauthorized()
@@ -82,6 +86,15 @@ class DeviceRuntimeController @Inject constructor(
                     is ApiResult.Success -> {
                         Log.d(TAG, "heartbeat success ...!")
                         retryDelayMs = HEARTBEAT_RETRY_BASE_MS
+                        
+                        if (result.data.hasNewPlaylist || result.data.lastSyncTime != null) {
+                            if (result.data.hasNewPlaylist) {
+                                Log.i(TAG, "Heartbeat signaled new playlist (boolean) - triggering sync [HEARTBEAT]")
+                            } else {
+                                Log.i(TAG, "Heartbeat provided update timestamp: ${result.data.lastSyncTime} - triggering sync [HEARTBEAT]")
+                            }
+                            onPlaylistUpdate(result.data.lastSyncTime)
+                        }
                     }
 
                     ApiResult.NotFound -> {
@@ -97,7 +110,7 @@ class DeviceRuntimeController @Inject constructor(
     private fun startRealtime(
         scope: CoroutineScope,
         deviceId: String,
-        onPlaylistUpdate: suspend () -> Unit
+        onPlaylistUpdate: suspend (Long?) -> Unit
     ) {
         scope.launch {
             runCatching {
@@ -130,7 +143,7 @@ class DeviceRuntimeController @Inject constructor(
 
     private fun startDeviceSubscription(
         deviceId: String,
-        onPlaylistUpdate: suspend () -> Unit,
+        onPlaylistUpdate: suspend (Long?) -> Unit,
         scope: CoroutineScope
     ) {
         Log.d(TAG, "Subscribing to realtime updates for deviceId=$deviceId")
@@ -142,8 +155,8 @@ class DeviceRuntimeController @Inject constructor(
 
         realtimeJob = realtimeService.deviceUpdates
             .onEach {
-                Log.d(TAG, "Realtime update received for deviceId=$deviceId")
-                onPlaylistUpdate()
+                Log.i(TAG, "Realtime update received for deviceId=$deviceId - triggering sync [REALTIME]")
+                onPlaylistUpdate(null) // Realtime doesn't provide timestamp yet
             }.catch { throwable ->
                 Log.e(TAG, "Realtime stream error for deviceId=$deviceId", throwable)
             }.launchIn(scope)

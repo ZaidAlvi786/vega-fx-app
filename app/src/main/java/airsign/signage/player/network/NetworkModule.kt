@@ -5,6 +5,7 @@ import airsign.signage.player.data.remote.ApiLoggingInterceptor
 import airsign.signage.player.data.remote.AuthenticationInterceptor
 import airsign.signage.player.data.remote.DeviceApiService
 import airsign.signage.player.data.remote.NetworkExceptionInterceptor
+import airsign.signage.player.data.remote.RetryInterceptor
 import airsign.signage.player.data.utils.BasePref
 import com.google.gson.GsonBuilder
 import dagger.Module
@@ -27,11 +28,12 @@ object NetworkModule {
     fun provideOkHttpClient(basePref: BasePref): OkHttpClient {
         return OkHttpClient.Builder()
             .addInterceptor(AuthenticationInterceptor(basePref))
-            .addInterceptor(ApiLoggingInterceptor()) // Log all API calls
+            .addInterceptor(RetryInterceptor()) // Retry transient failures with backoff
+            .addInterceptor(ApiLoggingInterceptor()) // Log all API calls (including retries)
             .addInterceptor(NetworkExceptionInterceptor())
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
             .build()
     }
 

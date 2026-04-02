@@ -8,6 +8,7 @@ import airsign.signage.player.data.remote.ApiResult
 import airsign.signage.player.data.remote.CheckPairingResponse
 import airsign.signage.player.data.remote.DeviceApiService
 import airsign.signage.player.data.remote.GenerateCodeResponse
+import android.util.Log
 import airsign.signage.player.data.remote.HeartbeatRequest
 import airsign.signage.player.data.remote.HeartbeatResponse
 import airsign.signage.player.data.remote.PlaylistResponse
@@ -53,7 +54,8 @@ class DeviceRepositoryImpl @Inject constructor(
     override suspend fun sendHeartbeat(
         deviceId: String,
         appVersion: String,
-        osVersion: String
+        osVersion: String,
+        lastSyncTime: Long?
     ): ApiResult<HeartbeatResponse> = apiCall(
         endpoint = ENDPOINT_HEARTBEAT,
         call = {
@@ -61,7 +63,8 @@ class DeviceRepositoryImpl @Inject constructor(
                 HeartbeatRequest(
                     deviceId = deviceId,
                     appVersion = appVersion,
-                    osVersion = osVersion
+                    osVersion = osVersion,
+                    lastSyncTime = lastSyncTime
                 )
             )
         },
@@ -133,12 +136,12 @@ class DeviceRepositoryImpl @Inject constructor(
             when {
                 statusCode == 401 -> {
                     val errorBody = extractErrorBody(response)
-                    recordApiResponse(endpoint, statusCode, errorBody)
+                    recordApiResponse(endpoint, statusCode, "Unauthorized: $errorBody")
                     ApiResult.Unauthorized
                 }
                 statusCode == 404 -> {
                     val errorBody = extractErrorBody(response)
-                    recordApiResponse(endpoint, statusCode, errorBody)
+                    recordApiResponse(endpoint, statusCode, "NotFound: $errorBody")
                     ApiResult.NotFound
                 }
                 response.isSuccessful -> {
@@ -147,8 +150,14 @@ class DeviceRepositoryImpl @Inject constructor(
                         val mapped = map(body)
                         val payloadJson = runCatching { gson.toJson(body) }.getOrNull()
                         recordApiResponse(endpoint, statusCode, payloadJson)
+                        
+                        if (endpoint == ENDPOINT_HEARTBEAT) {
+                            Log.i("HeartbeatTrace", "Heartbeat Payload: $payloadJson")
+                        }
+                        
                         ApiResult.Success(mapped)
                     } else {
+                        Log.w("NetworkTrace", "[$endpoint] Empty response body with code 2xx")
                         recordApiResponse(endpoint, statusCode, "Empty response body")
                         ApiResult.Failure(statusCode, "Empty response body")
                     }
@@ -156,11 +165,13 @@ class DeviceRepositoryImpl @Inject constructor(
                 else -> {
                     val errorBody = extractErrorBody(response)
                     recordApiResponse(endpoint, statusCode, errorBody)
+                    Log.e("NetworkTrace", "[$endpoint] API Error: $statusCode ${response.message()} | Body: $errorBody")
                     ApiResult.Failure(statusCode, response.message(), errorBody = errorBody)
                 }
             }
         } catch (throwable: Throwable) {
             if (throwable is CancellationException) throw throwable
+            Log.e("NetworkTrace", "[$endpoint] Request Exception: ${throwable.message}", throwable)
             recordApiResponse(endpoint, null, throwable.message)
             ApiResult.Failure(message = throwable.message, throwable = throwable)
         }

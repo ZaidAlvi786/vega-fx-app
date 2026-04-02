@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import dagger.hilt.android.AndroidEntryPoint
 import airsign.signage.player.ui.SplashActivity
+import airsign.signage.player.service.WatchdogService
 
 // This class detects the system reboot
 @AndroidEntryPoint
@@ -14,6 +15,9 @@ class BootDetectorReceiver : BroadcastReceiver() {
             val launchIntent = Intent(context, SplashActivity::class.java)
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(launchIntent)
+            
+            // Start resilience watchdog on boot
+            WatchdogService.sendPulse(context)
         }
 
     }
