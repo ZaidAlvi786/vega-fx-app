@@ -7,10 +7,11 @@ import airsign.signage.player.data.downloader.FileManager
 import airsign.signage.player.data.downloader.WorkContractor
 import airsign.signage.player.data.remote.ApiResult
 import airsign.signage.player.data.remote.PlaylistResponse
-import airsign.signage.player.data.repository.DeviceRepositoryImpl.Companion.ENDPOINT_CURRENT_PLAYLIST
+import airsign.signage.player.data.repository.DeviceRepositoryImpl.Companion.ENDPOINT_CHECK_PAIRING
 import airsign.signage.player.data.utils.DeviceInfoUtils
 import airsign.signage.player.domain.model.Content
 import airsign.signage.player.domain.model.DeviceModel
+import airsign.signage.player.data.utils.BasePref
 import airsign.signage.player.domain.repository.DeviceRepository
 import airsign.signage.player.domain.model.PairingSession
 import airsign.signage.player.device.DeviceManager
@@ -38,23 +39,27 @@ class MainViewModel @Inject constructor(
     private val application: Application,
     private val mediaPlayer: MediaPlayer,
     private val deviceRepository: DeviceRepository,
+    private val playlistRepository: airsign.signage.player.domain.repository.PlaylistRepository,
+    private val syncManager: airsign.signage.player.sync.SyncManager,
     private val deviceManager: DeviceManager,
     private val runtimeController: DeviceRuntimeController,
-    private val deviceInfoUtils: DeviceInfoUtils
+    private val deviceInfoUtils: DeviceInfoUtils,
+    private val fileManager: airsign.signage.player.data.downloader.FileManager,
+    private val basePref: BasePref
 ) : ViewModel() {
 
     private val TAG = "MainViewModel"
     private val _viewState = MutableLiveData<ViewState>()
     val viewState: LiveData<ViewState> = _viewState
 
-    private var mFileManager: FileManager? = null
+    private var isSyncing = false
+
     private var currentDeviceId: String? = null
     private var unauthorizedRetryJob: Job? = null
     private var lastUnauthorizedAtMs: Long = 0L
     private val gson = Gson()
 
     init {
-        mFileManager = FileManager(application)
     }
     fun onAppResumed() {
         viewModelScope.launch {
@@ -62,6 +67,7 @@ class MainViewModel @Inject constructor(
                 when (state) {
                     is DeviceState.Unregistered -> {
                         Log.d(TAG, "starting registration ....!!!")
+                        _viewState.postValue(ViewState.DisplayMessage("Connecting to server...", false))
                         deviceManager.startRegistrationFlow(this)
                     }
                     is DeviceState.Pending -> {
@@ -87,7 +93,16 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 Log.d(TAG, "startSignage: resolving latest device state")
-                val device = mediaPlayer.getDevice(deviceRepository)
+                val cachedResponse = playlistRepository.getCachedPlaylist()
+                val pairingResponse = deviceRepository.getPersistApiResponse(ENDPOINT_CHECK_PAIRING)
+                val paringStatus = Gson().fromJson(pairingResponse, airsign.signage.player.data.remote.CheckPairingResponse::class.java)
+                val screenCode = deviceRepository.getCachedPairingSession()?.code
+
+                val device = DeviceModel(
+                    cachedResponse,
+                    paringStatus,
+                    screenCode
+                )
                 verifyDeviceState(device)
             } catch (e: Exception) {
                 Log.e(TAG, "startSignage failed", e)
@@ -97,7 +112,8 @@ class MainViewModel @Inject constructor(
     }
 
     private fun verifyDeviceState(device: DeviceModel?) {
-        Log.d(TAG, "verifyDeviceState: $device")
+        try {
+            Log.d(TAG, "verifyDeviceState: $device")
 
         if (device == null) {
             val message = application.getString(connecting_to_server_update)
@@ -146,20 +162,31 @@ class MainViewModel @Inject constructor(
             return
         }
 
-        mediaPlayer.initialize(
-            mediaPlayer.mediaItemToContent(mediaItems)
-        )
+        val contentItems = mediaPlayer.mediaItemToContent(mediaItems)
+        
+        Log.i(TAG, "════════════ PLAYLIST TRACE ════════════")
+        Log.i(TAG, "Device: ${device.paringResponse?.deviceId}")
+        Log.i(TAG, "Total Items: ${contentItems.size}")
+        contentItems.forEachIndexed { index, content ->
+            Log.i(TAG, "[$index] ID: ${mediaItems.getOrNull(index)?.id} | File: ${content.filename} | Duration: ${content.duration}s | Type: ${content.type}")
+        }
+        Log.i(TAG, "═══════════════════════════════════════")
+
+        mediaPlayer.initialize(contentItems)
 
         _viewState.postValue(ViewState.StartSignage)
         startMediaCache()
+        } catch (e: Exception) {
+            Log.e(TAG, "════════════ FATAL SYNC ERROR ════════════")
+            Log.e(TAG, "Crash during playlist initialization: ${e.message}", e)
+            Log.e(TAG, "══════════════════════════════════════════")
+        }
     }
 
     private fun startMediaCache() {
         viewModelScope.launch {
-            mFileManager?.let {
-                val downloadable = it.getNonCachedMedia(mediaPlayer.mediaList)
-                WorkContractor.get().downloadPlaylistMediaSequentially(downloadable)
-            }
+            val downloadable = fileManager.getNonCachedMedia(mediaPlayer.mediaList)
+            WorkContractor.get().downloadPlaylistMediaSequentially(downloadable)
         }
     }
 
@@ -170,113 +197,56 @@ class MainViewModel @Inject constructor(
         runtimeController.start(
             scope = viewModelScope,
             deviceId = deviceId,
-            onPlaylistUpdate = { fetchPlaylist(deviceId) },
+            onPlaylistUpdate = { timestamp -> fetchPlaylist(deviceId, timestamp) },
+            onGetLastSyncTime = {
+                val time = basePref.getLong(BasePref.LAST_PLAYLIST_UPDATED_AT, -1L)
+                if (time == -1L) null else time
+            },
             onUnauthorized = ::handleUnauthorized
         )
     }
 
-    private suspend fun fetchPlaylist(deviceId: String) {
-        val cachedPlaylistJson = deviceRepository.getPersistApiResponse(ENDPOINT_CURRENT_PLAYLIST)
-        val cachedPlaylist = cachedPlaylistJson?.let { 
-            try {
-                gson.fromJson(it, PlaylistResponse::class.java)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to parse cached playlist", e)
-                null
-            }
+    private suspend fun fetchPlaylist(deviceId: String, serverUpdatedAt: Long? = null) {
+        if (isSyncing) {
+            Log.i(TAG, "fetchPlaylist: SKIPPING sync request (Sync already in progress)")
+            return
         }
-        
-        when (val result = deviceRepository.fetchCurrentPlaylist(deviceId)) {
-            is ApiResult.Success -> {
-                Log.d(TAG, "playlist fetched successfully ...!!")
-                if (cachedPlaylist != null) {
-                    Log.d(TAG, "cachedPlaylistResponse: $cachedPlaylist")
-                    Log.d(TAG, "newplaylist response: ${result.data}")
 
-                    compareAndDeleteChangedMedia(cachedPlaylist, result.data)
-                } else {
-                    Log.d(TAG, "No cached playlist found, skipping comparison")
-                }
-                
-                startSignage()
-            }
-
-            ApiResult.Unauthorized -> handleUnauthorized()
-            else -> {
-                Log.w(TAG, "something went wrong with playlist ...!!!")
-            }
+        // Timestamp-based synchronization check
+        val lastSyncAt = basePref.getLong(BasePref.LAST_PLAYLIST_UPDATED_AT, -1L)
+        if (serverUpdatedAt != null && lastSyncAt != -1L && serverUpdatedAt <= lastSyncAt) {
+            Log.d(TAG, "fetchPlaylist: Skipping sync, playlist timestamp is already up-to-date (server: $serverUpdatedAt, local: $lastSyncAt)")
+            return
         }
-    }
 
-    private suspend fun compareAndDeleteChangedMedia(
-        cachedPlaylist: PlaylistResponse,
-        newPlaylist: PlaylistResponse
-    ) {
         try {
-            val cachedMediaMap = cachedPlaylist.mediaItems.associateBy { it.id }
-            val newMediaMap = newPlaylist.mediaItems.associateBy { it.id }
-            val filesToDelete = mutableSetOf<String>() // de-dupe deletes
-
-            // Changed items: delete old cached file (and differing new filename, if any)
-            for (newMediaItem in newPlaylist.mediaItems) {
-                val cachedMediaItem = cachedMediaMap[newMediaItem.id] ?: continue
-
-                val cachedTs = parseLastModifiedToEpochMs(cachedMediaItem.last_modified)
-                val newTs = parseLastModifiedToEpochMs(newMediaItem.last_modified)
-                val hasChanged = when {
-                    cachedTs != null && newTs != null -> cachedTs != newTs
-                    else -> newMediaItem.last_modified != cachedMediaItem.last_modified
-                }
-
-                if (hasChanged) {
-                    if (cachedMediaItem.name.isNotBlank()) {
-                        filesToDelete.add(cachedMediaItem.name)
-                        Log.i(
-                            TAG,
-                            "Media changed (last_modified): deleting cached file ${cachedMediaItem.name} (cached: ${cachedMediaItem.last_modified}, new: ${newMediaItem.last_modified})"
-                        )
+            isSyncing = true
+            Log.i(TAG, "fetchPlaylist: sync trigger received for $deviceId (server_ts: $serverUpdatedAt, local_ts: $lastSyncAt)")
+            Log.d(TAG, "fetchPlaylist: starting sync for $deviceId")
+            val result = syncManager.sync(deviceId)
+            
+            when (result) {
+                is ApiResult.Success -> {
+                    Log.i(TAG, "Playlist sync successful - re-initializing playback pipeline")
+                    
+                    // Periodically persist the new timestamp if provided
+                    if (serverUpdatedAt != null) {
+                        basePref.setLong(BasePref.LAST_PLAYLIST_UPDATED_AT, serverUpdatedAt)
+                        Log.d(TAG, "fetchPlaylist: Updated local sync timestamp to $serverUpdatedAt")
                     }
-                    if (newMediaItem.name.isNotBlank() && newMediaItem.name != cachedMediaItem.name) {
-                        filesToDelete.add(newMediaItem.name)
-                        Log.i(
-                            TAG,
-                            "Media changed (last_modified): deleting new filename ${newMediaItem.name} so it re-downloads"
-                        )
-                    }
+                    
+                    startSignage()
                 }
-            }
-
-            // Removed items: delete from disk
-            for (cachedMediaItem in cachedPlaylist.mediaItems) {
-                if (!newMediaMap.containsKey(cachedMediaItem.id) && cachedMediaItem.name.isNotBlank()) {
-                    filesToDelete.add(cachedMediaItem.name)
-                    Log.i(TAG, "Media file removed from playlist: ${cachedMediaItem.name}")
-                }
-            }
-
-            mFileManager?.let { fileManager ->
-                for (filename in filesToDelete) {
-                    fileManager.deleteMediaFile(filename)
-                }
-                if (filesToDelete.isNotEmpty()) {
-                    Log.i(TAG, "Deleted ${filesToDelete.size} media file(s) from cache due to changes")
+                ApiResult.Unauthorized -> handleUnauthorized()
+                else -> {
+                    Log.e(TAG, "Playlist sync failed: $result")
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error comparing and deleting changed media", e)
+            Log.e(TAG, "Error during fetchPlaylist", e)
+        } finally {
+            isSyncing = false
         }
-    }
-
-    private fun parseLastModifiedToEpochMs(value: String?): Long? {
-        if (value.isNullOrBlank()) return null
-        // Try numeric (epoch millis or seconds), then ISO timestamps
-        value.toLongOrNull()?.let { num ->
-            // Heuristic: if it's seconds (10 digits), convert to millis
-            return if (num in 1_000_000_000..9_999_999_999) num * 1000 else num
-        }
-        runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()?.let { return it }
-        runCatching { OffsetDateTime.parse(value).toInstant().toEpochMilli() }.getOrNull()?.let { return it }
-        return null
     }
 
     private fun postScreenDetailsOnPairing(deviceId: String) {
