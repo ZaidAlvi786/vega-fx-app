@@ -8,4 +8,5 @@
     <string name="pairing_device_not_found">Device not registered. Please add this device in the AirSign dashboard.</string>
     <string name="empty_playlist_found">Empty Playlist found</string>
     <string name="stop_playback_message">The playlist is currently paused. Please enable it from the CMS to resume playback.</string>
+    <string name="pair_code_placeholder">- - - -</string>
 </resources>
