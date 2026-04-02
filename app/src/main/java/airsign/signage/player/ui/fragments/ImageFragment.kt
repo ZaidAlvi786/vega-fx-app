@@ -7,17 +7,18 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import com.bumptech.glide.Glide.with
-import com.bumptech.glide.request.RequestOptions
-import com.bumptech.glide.signature.ObjectKey
-import dagger.hilt.android.AndroidEntryPoint
-import java.io.File
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import airsign.signage.player.R
 import airsign.signage.player.ui.base.BaseFragment
+import dagger.hilt.android.AndroidEntryPoint
+import androidx.lifecycle.lifecycleScope
+import com.bumptech.glide.load.DecodeFormat
+import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.request.RequestOptions
+import com.bumptech.glide.signature.ObjectKey
+import java.io.File
 
 @AndroidEntryPoint
 class ImageFragment : BaseFragment() {
@@ -25,27 +26,29 @@ class ImageFragment : BaseFragment() {
 
     private val TAG = "ImageFragment"
 
-    private val asyncScope = CoroutineScope(Job() + Dispatchers.IO)
-
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View? {
         val view = inflater.inflate(R.layout.image_fragment, container, false)
         mImageView = view.findViewById(R.id.imageView)
 
+        viewLifecycleOwner.lifecycleScope.launch {
+            media?.let { item ->
+                val fileName = item.filename
+                val isCached = fileName?.let { mFileManager.isCached(it) } ?: false
+                Log.d(TAG, "Image caching status: $isCached for $fileName")
 
-        asyncScope.launch {
-            media?.let {
-                it.filename?.let {fileName->
-                    val isCached = mFileManager.isCached(fileName)
-                    Log.d(TAG, "isFileCached $isCached")
-
-                    val path = if (isCached) mFileManager.getFilePath(fileName) else it.url
-                    withContext(Dispatchers.Main) { loadImage(path) }
+                val path = if (isCached && fileName != null) {
+                    mFileManager.getFilePath(fileName)
+                } else {
+                    item.url
+                }
+                
+                withContext(Dispatchers.Main) { 
+                    loadImage(path) 
                 }
             }
         }
-
 
         return view
     }
@@ -66,13 +69,18 @@ class ImageFragment : BaseFragment() {
         val context = requireActivity().applicationContext
         try {
             val file = File(path)
+            
+            // Hardened Graphics chain for low-end Firesticks
+            val hardenedOptions = RequestOptions()
+                .format(DecodeFormat.PREFER_RGB_565) // Save 50% RAM
+                .override(1920, 1080)              // Cap resolution to 1080p
+                .diskCacheStrategy(DiskCacheStrategy.RESOURCE)
+
             if (file.exists()) {
-                // Signature from file lastModified so when file is replaced (updated content),
-                // Glide cache invalidates and new image is loaded instead of old cached one
-                val opts = RequestOptions().signature(ObjectKey(file.lastModified().toString()))
+                val opts = hardenedOptions.signature(ObjectKey(file.lastModified().toString()))
                 with(context).load(file).apply(opts).into(mImageView!!)
             } else {
-                with(context).load(path).into(mImageView!!)
+                with(context).load(path).apply(hardenedOptions).into(mImageView!!)
             }
         } catch (e: Exception) {
             playlistController?.nextMedia()
