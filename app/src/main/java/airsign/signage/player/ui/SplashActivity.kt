@@ -29,6 +29,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 import dagger.hilt.android.AndroidEntryPoint
+import airsign.signage.player.service.WatchdogService
 import javax.inject.Inject
 
 
@@ -50,6 +51,9 @@ class SplashActivity : AppCompatActivity() {
         hideSystemUI(mainContainer)
 
         mPermissionUtils = PermissionUtils(this)
+        
+        // Start resilience watchdog
+        WatchdogService.sendPulse(this)
     }
 
 
