@@ -11,9 +11,11 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import dagger.hilt.android.AndroidEntryPoint
 import airsign.signage.player.R
 import airsign.signage.player.ui.base.BaseFragment
 
+@AndroidEntryPoint
 class WebViewFragment : BaseFragment() {
     private var mWebView: WebView? = null
 
